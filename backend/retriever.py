@@ -1,5 +1,6 @@
 import chromadb
 from sentence_transformers import SentenceTransformer
+from pathlib import Path
 
 
 # ==========================================
@@ -14,9 +15,10 @@ model = SentenceTransformer(MODEL_NAME)
 # ==========================================
 # Connect to ChromaDB
 # ==========================================
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 client = chromadb.PersistentClient(
-    path="../chroma_db"
+    path=str(BASE_DIR / "chroma_db")
 )
 
 collection = client.get_collection(

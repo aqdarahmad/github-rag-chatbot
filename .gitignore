@@ -14,8 +14,7 @@ __pycache__/
 .idea/
 
 # RAG / generated data
-data/
-chroma_db/
+
 
 # Logs
 *.log
