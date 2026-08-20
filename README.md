@@ -1,37 +1,52 @@
 # GitHub RAG Chatbot
 
-RAG-based chatbot for answering questions about FastAPI documentation.
+A Retrieval-Augmented Generation (RAG) chatbot for answering questions about FastAPI documentation.
+
+The system retrieves relevant documentation from a vector database and uses Google Gemini to generate a natural-language answer.
+
+---
 
 ## Features
 
-- FastAPI backend
-- Google Gemini for answer generation
-- Sentence Transformers for embeddings
-- ChromaDB vector database
-- Semantic search
-- Markdown-aware chunking
-- Simple web frontend
+* FastAPI backend
+* Google Gemini for answer generation
+* Sentence Transformers for embeddings
+* ChromaDB vector database
+* Semantic similarity search
+* Markdown-aware document chunking
+* REST API
+* Simple web frontend
+* CORS support
+
+---
 
 ## Architecture
 
+```text
 FastAPI Documentation
         ↓
 Document Loading
         ↓
-Chunking
+Document Chunking
         ↓
-Embeddings
+Text Embeddings
         ↓
 ChromaDB
         ↓
 Semantic Retrieval
         ↓
+Relevant Context
+        ↓
 Google Gemini
         ↓
-Final Answer
+Generated Answer
+```
+
+---
 
 ## Project Structure
 
+```text
 github-rag-chatbot/
 │
 ├── backend/
@@ -43,7 +58,8 @@ github-rag-chatbot/
 │   ├── main.py
 │   ├── rag.py
 │   ├── retriever.py
-│   └── ...
+│   ├── test_models.py
+│   └── test_similarity.py
 │
 ├── frontend/
 │   ├── index.html
@@ -53,155 +69,313 @@ github-rag-chatbot/
 ├── requirements.txt
 ├── .gitignore
 └── README.md
+```
+
+---
+
+## How It Works
+
+When a user asks a question, the system follows these steps:
+
+1. The user sends a question through the frontend.
+2. The FastAPI backend receives the question.
+3. The question is converted into an embedding using Sentence Transformers.
+4. ChromaDB searches for semantically similar documentation chunks.
+5. The most relevant chunks are selected.
+6. The retrieved chunks are combined into a context.
+7. The context and the user's question are sent to Google Gemini.
+8. Gemini generates the final answer.
+9. The answer is returned to the frontend.
+
+---
 
 ## Requirements
 
-- Python 3.11+
-- Git
-- Google Gemini API key
-- GitHub token (if repository loading is used)
+Before running the project, make sure you have:
+
+* Python 3.11+
+* Git
+* Google Gemini API key
+* GitHub token if GitHub repository loading is used
+
+---
 
 ## Installation
 
 ### 1. Clone the repository
 
+```bash
 git clone https://github.com/aqdarahmad/github-rag-chatbot.git
-
 cd github-rag-chatbot
+```
 
-### 2. Create virtual environment
+### 2. Create a virtual environment
 
+```bash
 python -m venv venv
+```
 
-### 3. Activate virtual environment
+### 3. Activate the virtual environment
 
-Windows:
+#### Windows
 
+```powershell
 venv\Scripts\activate
+```
+
+#### Linux / macOS
+
+```bash
+source venv/bin/activate
+```
 
 ### 4. Install dependencies
 
+```bash
 pip install -r requirements.txt
+```
+
+---
 
 ## Environment Variables
 
 Create a `.env` file in the project root:
 
+```env
 GITHUB_TOKEN=your_github_token
 GEMINI_API_KEY=your_gemini_api_key
+```
 
-Never commit the `.env` file.
+Never commit your `.env` file or expose your API keys publicly.
+
+The `.gitignore` file already excludes `.env`.
+
+---
 
 ## Build the RAG Database
 
-Run the document loading / chunking / embedding pipeline:
+The project uses a document processing pipeline to prepare the documentation for retrieval.
 
+Run:
+
+```bash
 python backend/github_loader.py
+```
 
+Then:
+
+```bash
 python backend/chunker.py
+```
 
+Then:
+
+```bash
 python backend/embeddings.py
+```
 
-This process:
+The process:
 
-1. Loads documentation
-2. Splits documents into chunks
-3. Generates embeddings
-4. Stores vectors in ChromaDB
+```text
+GitHub Repository
+        ↓
+Document Loading
+        ↓
+File Filtering
+        ↓
+Chunking
+        ↓
+Embedding Generation
+        ↓
+ChromaDB
+```
+
+The generated vector database is stored locally in:
+
+```text
+chroma_db/
+```
+
+---
 
 ## Run the Backend
 
-From the project root:
+Start the FastAPI server:
 
+```bash
 uvicorn backend.main:app --reload
+```
 
-The API will be available at:
+The backend will be available at:
 
+```text
 http://127.0.0.1:8000
-
-## API
+```
 
 ### Health Check
 
-GET /
+Open:
 
-Returns:
+```text
+http://127.0.0.1:8000/
+```
 
+Expected response:
+
+```json
 {
   "message": "GitHub RAG Chatbot is running"
 }
+```
 
-### Ask a Question
+---
 
-POST /ask
+## API
 
-Example:
+### `GET /`
 
+Checks whether the backend is running.
+
+Example response:
+
+```json
+{
+  "message": "GitHub RAG Chatbot is running"
+}
+```
+
+---
+
+### `POST /ask`
+
+Sends a question to the RAG chatbot.
+
+Request:
+
+```json
 {
   "question": "What is a path parameter?"
 }
+```
 
-The system retrieves relevant documentation chunks and sends them to Gemini to generate the answer.
+Example response:
+
+```json
+{
+  "question": "What is a path parameter?",
+  "answer": "A path parameter is a variable declared in the URL path..."
+}
+```
+
+---
+
+## Interactive API Documentation
+
+FastAPI automatically provides interactive API documentation.
+
+After starting the backend, open:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+You can use Swagger UI to test the API directly.
+
+---
 
 ## Frontend
 
-Open:
+The project includes a simple web interface located in:
 
-frontend/index.html
+```text
+frontend/
+```
 
-Or serve the frontend using a local HTTP server.
+Files:
 
-The frontend communicates with the FastAPI backend.
+```text
+frontend/
+├── index.html
+├── script.js
+└── style.css
+```
+
+The frontend sends user questions to the FastAPI backend and displays the generated answers.
+
+---
 
 ## Example
 
-Question:
+### Question
 
+```text
 What is a path parameter?
+```
 
-Answer:
+### Answer
 
-A path parameter is a variable declared in the URL path...
+```text
+A path parameter is a variable declared in the URL path using
+the same syntax used by Python format strings. Its value is
+passed to the function as an argument.
+```
+
+---
 
 ## RAG Pipeline
 
-The system follows the Retrieval-Augmented Generation approach:
+The complete Retrieval-Augmented Generation pipeline is:
 
+```text
 User Question
-↓
-Embedding
-↓
-Vector Search
-↓
-Relevant Chunks
-↓
-Context
-↓
-Gemini
-↓
-Answer
+      ↓
+Sentence Transformer
+      ↓
+Question Embedding
+      ↓
+ChromaDB Similarity Search
+      ↓
+Top Relevant Chunks
+      ↓
+Context Construction
+      ↓
+Google Gemini
+      ↓
+Final Answer
+```
+
+---
 
 ## Technologies
 
-- Python
-- FastAPI
-- ChromaDB
-- Sentence Transformers
-- Google Gemini
-- HTML
-- CSS
-- JavaScript
+| Technology            | Purpose                   |
+| --------------------- | ------------------------- |
+| Python                | Main programming language |
+| FastAPI               | Backend REST API          |
+| ChromaDB              | Vector database           |
+| Sentence Transformers | Text embeddings           |
+| Google Gemini         | Answer generation         |
+| Requests              | GitHub API communication  |
+| HTML                  | Frontend structure        |
+| CSS                   | Frontend styling          |
+| JavaScript            | Frontend logic            |
+
+---
 
 ## Future Improvements
 
-- Support arbitrary public GitHub repositories
-- Allow users to enter a GitHub repository URL
-- Automatically clone/index repositories
-- Repository-specific chat sessions
-- Authentication
-- Streaming responses
-- Improved retrieval and reranking
+* Support arbitrary public GitHub repositories
+* Allow users to enter a GitHub repository URL
+* Automatically load and index repositories
+* Repository-specific chat sessions
+* Authentication
+* Streaming responses
+* Improved retrieval and reranking
+* Better chunk selection
+* Multi-repository support
+
+---
 
 ## License
 
-MIT
+This project is licensed under the MIT License.
