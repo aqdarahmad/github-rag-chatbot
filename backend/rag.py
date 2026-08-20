@@ -1,5 +1,5 @@
-from retriever import search, select_relevant_chunks
-from generator import generate_answer
+from .retriever import search, select_relevant_chunks
+from .generator import generate_answer
 
 
 # ==========================================
