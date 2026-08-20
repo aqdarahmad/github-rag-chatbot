@@ -1,4 +1,4 @@
-```css
+
 * {
     box-sizing: border-box;
 }
@@ -17,7 +17,7 @@ body {
 }
 
 /* ==============================
-   Main Chat Container
+Main Chat Container
    ============================== */
 
 .chat-container {
@@ -37,7 +37,7 @@ body {
 }
 
 /* ==============================
-   Header
+Header
    ============================== */
 
 header {
@@ -64,7 +64,7 @@ header p {
 }
 
 /* ==============================
-   Chat Area
+Chat Area
    ============================== */
 
 .chat-box {
@@ -78,7 +78,7 @@ header p {
 }
 
 /* ==============================
-   Messages
+Messages
    ============================== */
 
 .message {
@@ -120,7 +120,7 @@ header p {
 }
 
 /* ==============================
-   Input Area
+Input Area
    ============================== */
 
 .input-area {
@@ -134,7 +134,7 @@ header p {
 }
 
 /* ==============================
-   Input
+Input
    ============================== */
 
 input {
@@ -166,7 +166,7 @@ input::placeholder {
 }
 
 /* ==============================
-   Send Button
+Send Button
    ============================== */
 
 button {
@@ -200,7 +200,7 @@ button:active {
 }
 
 /* ==============================
-   Scrollbar
+Scrollbar
    ============================== */
 
 .chat-box::-webkit-scrollbar {
@@ -222,7 +222,7 @@ button:active {
 }
 
 /* ==============================
-   Mobile
+Mobile
    ============================== */
 
 @media (max-width: 750px) {
@@ -250,4 +250,3 @@ button:active {
         max-width: 85%;
     }
 }
-```
