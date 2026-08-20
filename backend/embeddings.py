@@ -1,7 +1,7 @@
 import chromadb
 from sentence_transformers import SentenceTransformer
 
-from chunker import load_documents
+from .chunker import load_documents
 
 
 # ==========================================
