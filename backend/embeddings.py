@@ -1,7 +1,19 @@
 import chromadb
+
+from pathlib import Path
+
 from sentence_transformers import SentenceTransformer
 
 from .chunker import load_documents
+
+
+# ==========================================
+# Paths
+# ==========================================
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+CHROMA_PATH = BASE_DIR / "chroma_db"
 
 
 # ==========================================
@@ -10,7 +22,9 @@ from .chunker import load_documents
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 
-model = SentenceTransformer(MODEL_NAME)
+model = SentenceTransformer(
+    MODEL_NAME
+)
 
 
 # ==========================================
@@ -18,12 +32,15 @@ model = SentenceTransformer(MODEL_NAME)
 # ==========================================
 
 client = chromadb.PersistentClient(
-    path="../chroma_db"
+    path=str(CHROMA_PATH)
 )
 
 
 collection = client.get_or_create_collection(
-    name="github_code"
+    name="github_code",
+    metadata={
+        "hnsw:space": "cosine"
+    }
 )
 
 
@@ -40,10 +57,89 @@ def create_embeddings(documents):
 
     embeddings = model.encode(
         texts,
-        show_progress_bar=True
+        show_progress_bar=True,
+        normalize_embeddings=True
     )
 
     return embeddings
+
+
+# ==========================================
+# Store documents
+# ==========================================
+
+def build_database():
+
+    print(
+        "\nLoading documents..."
+    )
+
+    documents = load_documents()
+
+    print(
+        f"Loaded {len(documents)} chunks."
+    )
+
+    if not documents:
+
+        raise RuntimeError(
+            "No documents were found."
+        )
+
+    print(
+        "\nCreating embeddings..."
+    )
+
+    embeddings = create_embeddings(
+        documents
+    )
+
+    print(
+        f"Embedding shape: "
+        f"{embeddings.shape}"
+    )
+
+    ids = [
+        f"chunk_{i}"
+        for i in range(
+            len(documents)
+        )
+    ]
+
+    texts = [
+        document["text"]
+        for document in documents
+    ]
+
+    metadatas = [
+
+        {
+            "source": document["source"],
+            "chunk_id": document["chunk_id"]
+        }
+
+        for document in documents
+    ]
+
+    print(
+        "\nStoring documents in ChromaDB..."
+    )
+
+    collection.upsert(
+
+        ids=ids,
+
+        documents=texts,
+
+        embeddings=embeddings.tolist(),
+
+        metadatas=metadatas
+    )
+
+    print(
+        f"\nStored "
+        f"{len(documents)} chunks."
+    )
 
 
 # ==========================================
@@ -52,67 +148,4 @@ def create_embeddings(documents):
 
 if __name__ == "__main__":
 
-    print("Loading chunks...")
-
-    documents = load_documents()
-
-    print(
-        f"Loaded {len(documents)} chunks."
-    )
-
-
-    print(
-        "Creating embeddings..."
-    )
-
-    embeddings = create_embeddings(
-        documents
-    )
-
-
-    print(
-        f"Embedding shape: {embeddings.shape}"
-    )
-
-
-    print(
-        "Storing embeddings in ChromaDB..."
-    )
-
-
-    # IDs for each chunk
-    ids = [
-        f"chunk_{i}"
-        for i in range(len(documents))
-    ]
-
-
-    # Text of each chunk
-    texts = [
-        document["text"]
-        for document in documents
-    ]
-
-
-    # Metadata
-    metadatas = [
-        {
-            "source": document["source"],
-            "chunk_id": document["chunk_id"]
-        }
-        for document in documents
-    ]
-
-
-    # Store everything
-    collection.upsert(
-        ids=ids,
-        documents=texts,
-        embeddings=embeddings.tolist(),
-        metadatas=metadatas
-    )
-
-
-    print(
-        f"Stored {len(documents)} chunks in ChromaDB."
-    )
+    build_database()

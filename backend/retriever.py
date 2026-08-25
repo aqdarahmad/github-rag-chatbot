@@ -1,24 +1,54 @@
 import chromadb
-from sentence_transformers import SentenceTransformer
+
 from pathlib import Path
+
+from sentence_transformers import (
+    SentenceTransformer,
+    CrossEncoder
+)
+
+
+# ==========================================
+# Paths
+# ==========================================
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+CHROMA_PATH = BASE_DIR / "chroma_db"
 
 
 # ==========================================
 # Embedding model
 # ==========================================
 
-MODEL_NAME = "all-MiniLM-L6-v2"
+EMBEDDING_MODEL_NAME = (
+    "all-MiniLM-L6-v2"
+)
 
-model = SentenceTransformer(MODEL_NAME)
+embedding_model = SentenceTransformer(
+    EMBEDDING_MODEL_NAME
+)
 
 
 # ==========================================
-# Connect to ChromaDB
+# Reranker
 # ==========================================
-BASE_DIR = Path(__file__).resolve().parent.parent
+
+RERANKER_MODEL_NAME = (
+    "cross-encoder/ms-marco-MiniLM-L-6-v2"
+)
+
+reranker = CrossEncoder(
+    RERANKER_MODEL_NAME
+)
+
+
+# ==========================================
+# ChromaDB
+# ==========================================
 
 client = chromadb.PersistentClient(
-    path=str(BASE_DIR / "chroma_db")
+    path=str(CHROMA_PATH)
 )
 
 collection = client.get_collection(
@@ -27,146 +57,174 @@ collection = client.get_collection(
 
 
 # ==========================================
-# Search ChromaDB
+# Stage 1
+# Semantic retrieval
 # ==========================================
 
-def search(query, top_k=20):
+def search(
+    query,
+    top_k=20
+):
 
-    # Convert user's question to embedding
-    query_embedding = model.encode(
-        [query]
+    print(
+        "\nSearching ChromaDB..."
     )
 
-    # Search ChromaDB
+    # --------------------------------------
+    # Convert question to embedding
+    # --------------------------------------
+
+    query_embedding = (
+        embedding_model.encode(
+            query,
+            normalize_embeddings=True
+        )
+    )
+
+    # --------------------------------------
+    # Semantic search
+    # --------------------------------------
+
     results = collection.query(
-        query_embeddings=query_embedding.tolist(),
-        n_results=top_k
+
+        query_embeddings=[
+            query_embedding.tolist()
+        ],
+
+        n_results=top_k,
+
+        include=[
+            "documents",
+            "metadatas",
+            "distances"
+        ]
     )
 
-    for i, doc in enumerate(results['documents'][0]):
-        print(f"[{i}] {doc[:150]}")
-        print("---")
+    documents = results[
+        "documents"
+    ][0]
+
+    print(
+        f"ChromaDB returned "
+        f"{len(documents)} candidates."
+    )
 
     return results
 
 
 # ==========================================
-# Select relevant chunks
+# Stage 2
+# Cross-Encoder reranking
 # ==========================================
 
-def select_relevant_chunks(results, query, max_chunks=5):
+def rerank_chunks(
+    results,
+    query,
+    max_chunks=5
+):
 
-    documents = results["documents"][0]
-    metadatas = results["metadatas"][0]
-    distances = results["distances"][0]
+    documents = results[
+        "documents"
+    ][0]
+
+    metadatas = results[
+        "metadatas"
+    ][0]
+
+    distances = results[
+        "distances"
+    ][0]
+
+    if not documents:
+
+        return []
+
+    # ======================================
+    # Create query-document pairs
+    # ======================================
+
+    pairs = [
+
+        [
+            query,
+            document
+        ]
+
+        for document in documents
+    ]
+
+    # ======================================
+    # Reranker scores
+    # ======================================
+
+    scores = reranker.predict(
+        pairs
+    )
+
+    # ======================================
+    # Build candidates
+    # ======================================
 
     chunks = []
 
-    query_lower = query.lower()
-
-    for document, metadata, distance in zip(
+    for document, metadata, distance, score in zip(
         documents,
         metadatas,
-        distances
+        distances,
+        scores
     ):
 
-        text = document.lower()
-
-        # Start with semantic distance
-        score = distance
-
-        # ==========================================
-        # Keyword matching
-        # ==========================================
-
-        if "path parameter" in query_lower:
-            if "path parameter" in text:
-                score -= 0.30
-
-        # ==========================================
-        # Strong boost for definition
-        # ==========================================
-
-        if "path parameters" in text:
-
-            if "you can declare path" in text:
-                score -= 0.50
-
-            if "value of the path parameter" in text:
-                score -= 0.10
-
-        # ==========================================
-        # Penalize specialized topics
-        # ==========================================
-
-        if "path parameters containing paths" in text:
-            score += 0.20
-
-        if "predefined values" in text:
-            score += 0.15
-
-        if "enumeration" in text:
-            score += 0.10
-
         chunks.append({
+
             "document": document,
+
             "metadata": metadata,
-            "distance": distance,
-            "score": score
+
+            "distance": float(
+                distance
+            ),
+
+            "rerank_score": float(
+                score
+            )
+
         })
 
-    # Lower score = better
+    # ======================================
+    # Highest reranker score = best
+    # ======================================
+
     chunks.sort(
-        key=lambda x: x["score"]
+        key=lambda x: x["rerank_score"],
+        reverse=True
     )
 
-    return chunks[:max_chunks]
+    selected = chunks[
+        :max_chunks
+    ]
 
+    # ======================================
+    # Debug output
+    # ======================================
 
-# ==========================================
-# Main
-# ==========================================
-
-if __name__ == "__main__":
-
-    query = input(
-        "\nAsk a question about FastAPI: "
+    print(
+        "\n=============================="
     )
 
-
-    # ======================================
-    # Retrieve 20 chunks from ChromaDB
-    # ======================================
-
-    results = search(query)
-
-
-    # ======================================
-    # Select best 5 chunks
-    # ======================================
-
-    selected_chunks = select_relevant_chunks(
-        results,
-        query,
-        max_chunks=5
+    print(
+        "Reranked Results"
     )
 
-
-    # ======================================
-    # Display results
-    # ======================================
-
-    print("\n==============================")
-    print("Selected relevant chunks")
-    print("==============================\n")
-
+    print(
+        "=============================="
+    )
 
     for i, chunk in enumerate(
-        selected_chunks
+        selected
     ):
 
         print(
-            f"Result {i + 1}"
+            f"\nResult {i + 1}"
         )
 
         print(
@@ -180,21 +238,90 @@ if __name__ == "__main__":
         )
 
         print(
-            f"Distance: "
-            f"{chunk['distance']}"
+            f"Chroma distance: "
+            f"{chunk['distance']:.4f}"
         )
 
         print(
-            f"Score: "
-            f"{chunk['score']}"
-        )
-
-        print("\nContent:")
-
-        print(
-            chunk["document"][:1000]
+            f"Reranker score: "
+            f"{chunk['rerank_score']:.4f}"
         )
 
         print(
-            "\n" + "=" * 60 + "\n"
+            "\nContent:"
+        )
+
+        print(
+            chunk["document"][:700]
+        )
+
+    return selected
+
+
+# ==========================================
+# Full retrieval pipeline
+# ==========================================
+
+def retrieve(
+    query,
+    retrieval_k=20,
+    final_k=5
+):
+
+    results = search(
+        query,
+        top_k=retrieval_k
+    )
+
+    selected_chunks = rerank_chunks(
+        results,
+        query,
+        max_chunks=final_k
+    )
+
+    return selected_chunks
+
+
+# ==========================================
+# Test
+# ==========================================
+
+if __name__ == "__main__":
+
+    question = input(
+        "\nAsk a question about FastAPI: "
+    )
+
+    chunks = retrieve(
+        question,
+        retrieval_k=20,
+        final_k=5
+    )
+
+    print(
+        "\n=============================="
+    )
+
+    print(
+        "Final Selected Chunks"
+    )
+
+    print(
+        "=============================="
+    )
+
+    for i, chunk in enumerate(
+        chunks
+    ):
+
+        print(
+            f"\nResult {i + 1}"
+        )
+
+        print(
+            chunk["document"]
+        )
+
+        print(
+            "\n" + "=" * 60
         )

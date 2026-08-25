@@ -1,16 +1,47 @@
+
 import os
 import re
+from pathlib import Path
 
 
-DATA_DIRECTORY = "../data"
+# ==========================================
+# Paths
+# ==========================================
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIRECTORY = BASE_DIR / "data"
+
+
+# ==========================================
+# Configuration
+# ==========================================
 
 CHUNK_SIZE = 1500
 CHUNK_OVERLAP = 200
 
+SUPPORTED_EXTENSIONS = {
+    ".py",
+    ".md",
+    ".txt",
+    ".json",
+    ".yaml",
+    ".yml",
+}
 
-def split_large_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
+
+# ==========================================
+# Generic text splitting
+# ==========================================
+
+def split_large_text(
+    text: str,
+    chunk_size: int = CHUNK_SIZE,
+    overlap: int = CHUNK_OVERLAP,
+):
     """
-    Split a long section into smaller overlapping chunks.
+    Split large text into overlapping chunks.
+
+    Used when a logical section is too large.
     """
 
     chunks = []
@@ -21,41 +52,46 @@ def split_large_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
 
         end = start + chunk_size
 
-        chunk = text[start:end]
+        chunk = text[start:end].strip()
 
-        if chunk.strip():
-            chunks.append(chunk.strip())
+        if chunk:
+            chunks.append(chunk)
 
         if end >= len(text):
             break
 
-        start += chunk_size - overlap
+        start = end - overlap
 
     return chunks
 
 
-def chunk_markdown(text):
+# ==========================================
+# Markdown chunking
+# ==========================================
+
+def chunk_markdown(text: str):
     """
     Split Markdown according to headings.
 
-    Each Markdown section stays together as much as possible.
+    Each heading and its content stay together
+    whenever possible.
     """
 
-    # Match Markdown headings:
-    # # Heading
-    # ## Heading
-    # ### Heading
     heading_pattern = r"(?m)^(#{1,6})\s+.+$"
 
-    matches = list(re.finditer(heading_pattern, text))
+    matches = list(
+        re.finditer(
+            heading_pattern,
+            text
+        )
+    )
 
-    # If there are no headings, use normal chunking
     if not matches:
         return split_large_text(text)
 
     sections = []
 
-    # Content before the first heading
+    # Content before first heading
     if matches[0].start() > 0:
 
         preamble = text[:matches[0].start()].strip()
@@ -63,7 +99,7 @@ def chunk_markdown(text):
         if preamble:
             sections.append(preamble)
 
-    # Create sections
+    # Extract sections
     for i, match in enumerate(matches):
 
         start = match.start()
@@ -78,7 +114,7 @@ def chunk_markdown(text):
         if section:
             sections.append(section)
 
-    # Split only sections that are too large
+    # Split only large sections
     chunks = []
 
     for section in sections:
@@ -96,16 +132,94 @@ def chunk_markdown(text):
     return chunks
 
 
-def chunk_text(text, filename):
+# ==========================================
+# Python code chunking
+# ==========================================
 
-    # Markdown files
-    if filename.lower().endswith(".md"):
+def chunk_python(text: str):
+    """
+    Split Python code using top-level definitions.
+
+    Keeps functions/classes together whenever possible.
+    """
+
+    lines = text.splitlines()
+
+    chunks = []
+
+    current = []
+
+    # Detect top-level Python definitions
+    definition_pattern = re.compile(
+        r"^(class|def|async\s+def)\s+"
+    )
+
+    for line in lines:
+
+        is_definition = (
+            definition_pattern.match(line)
+            and not line.startswith((" ", "\t"))
+        )
+
+        if is_definition and current:
+
+            chunk = "\n".join(current).strip()
+
+            if chunk:
+                chunks.append(chunk)
+
+            current = []
+
+        current.append(line)
+
+    # Last chunk
+    if current:
+
+        chunk = "\n".join(current).strip()
+
+        if chunk:
+            chunks.append(chunk)
+
+    # Split oversized functions/classes
+    final_chunks = []
+
+    for chunk in chunks:
+
+        if len(chunk) <= CHUNK_SIZE:
+
+            final_chunks.append(chunk)
+
+        else:
+
+            final_chunks.extend(
+                split_large_text(chunk)
+            )
+
+    return final_chunks
+
+
+# ==========================================
+# Generic file chunking
+# ==========================================
+
+def chunk_text(text: str, filename: str):
+
+    extension = Path(filename).suffix.lower()
+
+    if extension == ".md":
 
         return chunk_markdown(text)
 
-    # Other text/code files
+    if extension == ".py":
+
+        return chunk_python(text)
+
     return split_large_text(text)
 
+
+# ==========================================
+# Load documents
+# ==========================================
 
 def load_documents():
 
@@ -115,10 +229,11 @@ def load_documents():
 
         for filename in files:
 
-            file_path = os.path.join(
-                root,
-                filename
-            )
+            file_path = Path(root) / filename
+
+            # Ignore unsupported files
+            if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                continue
 
             try:
 
@@ -130,42 +245,64 @@ def load_documents():
 
                     text = file.read()
 
-                chunks = chunk_text(
-                    text,
-                    filename
-                )
-
-                for index, chunk in enumerate(chunks):
-
-                    documents.append({
-                        "text": chunk,
-                        "source": file_path,
-                        "chunk_id": index
-                    })
-
             except UnicodeDecodeError:
 
                 print(
                     f"Skipping non-text file: {file_path}"
                 )
 
+                continue
+
+            chunks = chunk_text(
+                text,
+                filename
+            )
+
+            for index, chunk in enumerate(chunks):
+
+                documents.append({
+
+                    "text": chunk,
+
+                    "source": str(
+                        file_path.relative_to(
+                            BASE_DIR
+                        )
+                    ),
+
+                    "chunk_id": index,
+
+                    "file_type": file_path.suffix.lower()
+
+                })
+
     return documents
 
+
+# ==========================================
+# Test
+# ==========================================
 
 if __name__ == "__main__":
 
     documents = load_documents()
 
     print(
-        f"Total chunks: {len(documents)}"
+        f"\nTotal chunks: {len(documents)}"
     )
 
-    for document in documents[:5]:
+    print(
+        "\nFirst 10 chunks:"
+    )
 
-        print("\n==============================")
+    print(
+        "=" * 80
+    )
+
+    for document in documents[:10]:
 
         print(
-            f"Source: {document['source']}"
+            f"\nSource: {document['source']}"
         )
 
         print(
@@ -173,5 +310,18 @@ if __name__ == "__main__":
         )
 
         print(
+            f"Type: {document['file_type']}"
+        )
+
+        print(
+            "-" * 80
+        )
+
+        print(
             document["text"][:1000]
         )
+
+        print(
+            "=" * 80
+        )
+
