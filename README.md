@@ -238,8 +238,11 @@ Checks whether the backend is running.
 
 Example response:
 
-<img width="879" height="866" alt="image" src="https://github.com/user-attachments/assets/7486aa24-4c39-4858-a171-f189280bfc79" />
-<img width="884" height="869" alt="image" src="https://github.com/user-attachments/assets/abf4a990-cf69-45b8-ae50-9fbbba28e90b" />
+
+<img width="1899" height="907" alt="image" src="https://github.com/user-attachments/assets/50cae444-a5d1-446a-a6d6-d700ca98f7d8" />
+
+<img width="1903" height="905" alt="image" src="https://github.com/user-attachments/assets/ee5e22ef-a1b7-4570-9c3b-283505cfbad9" />
+
 
 
 
