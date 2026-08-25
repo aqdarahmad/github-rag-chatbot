@@ -354,4 +354,3 @@ Final Answer
 * Multi-repository support
 
 ---
-<img width="879" height="866" alt="image" src="https://github.com/user-attachments/assets/7486aa24-4c39-4858-a171-f189280bfc79" />
