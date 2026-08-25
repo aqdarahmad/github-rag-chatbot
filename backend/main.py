@@ -5,6 +5,10 @@ from pydantic import BaseModel
 from .rag import ask
 
 
+# ==========================================
+# FastAPI Application
+# ==========================================
+
 app = FastAPI(
     title="GitHub RAG Chatbot",
     description="RAG chatbot for FastAPI documentation",
@@ -19,7 +23,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
 
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
 
     allow_credentials=True,
 
@@ -30,7 +37,7 @@ app.add_middleware(
 
 
 # ==========================================
-# Request model
+# Request Model
 # ==========================================
 
 class QuestionRequest(BaseModel):
@@ -39,7 +46,7 @@ class QuestionRequest(BaseModel):
 
 
 # ==========================================
-# Root endpoint
+# Root Endpoint
 # ==========================================
 
 @app.get("/")
@@ -51,7 +58,7 @@ def root():
 
 
 # ==========================================
-# Ask endpoint
+# Ask Endpoint
 # ==========================================
 
 @app.post("/ask")
