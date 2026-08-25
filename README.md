@@ -238,34 +238,10 @@ Checks whether the backend is running.
 
 Example response:
 
-```json
-{
-  "message": "GitHub RAG Chatbot is running"
-}
-```
+<img width="879" height="866" alt="image" src="https://github.com/user-attachments/assets/7486aa24-4c39-4858-a171-f189280bfc79" />
+<img width="884" height="869" alt="image" src="https://github.com/user-attachments/assets/abf4a990-cf69-45b8-ae50-9fbbba28e90b" />
 
----
 
-### `POST /ask`
-
-Sends a question to the RAG chatbot.
-
-Request:
-
-```json
-{
-  "question": "What is a path parameter?"
-}
-```
-
-Example response:
-
-```json
-{
-  "question": "What is a path parameter?",
-  "answer": "A path parameter is a variable declared in the URL path..."
-}
-```
 
 ---
 
@@ -375,7 +351,4 @@ Final Answer
 * Multi-repository support
 
 ---
-
-## License
-
-This project is licensed under the MIT License.
+<img width="879" height="866" alt="image" src="https://github.com/user-attachments/assets/7486aa24-4c39-4858-a171-f189280bfc79" />
