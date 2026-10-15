@@ -62,9 +62,10 @@ github-rag-chatbot/
 │   └── test_similarity.py
 │
 ├── frontend/
-│   ├── index.html
-│   ├── script.js
-│   └── style.css
+│   └── frontend/        # React + Vite app
+│       ├── src/
+│       ├── package.json
+│       └── vite.config.js
 │
 ├── requirements.txt
 ├── .gitignore
@@ -264,22 +265,33 @@ You can use Swagger UI to test the API directly.
 
 ## Frontend
 
-The project includes a simple web interface located in:
+The web interface is a React + Vite app located in:
 
 ```text
-frontend/
+frontend/frontend/
 ```
 
-Files:
+Run it (the backend must already be running):
+
+```bash
+cd frontend/frontend
+npm install
+npm run dev
+```
+
+Then open:
 
 ```text
-frontend/
-├── index.html
-├── script.js
-└── style.css
+http://localhost:5173
 ```
 
-The frontend sends user questions to the FastAPI backend and displays the generated answers.
+The backend allows requests from `http://localhost:5173` and `http://127.0.0.1:5173` (see CORS in `backend/main.py`).
+
+By default the frontend sends requests to `http://127.0.0.1:8000`. To use another backend URL, create `frontend/frontend/.env` with:
+
+```env
+VITE_API_URL=http://your-backend-url
+```
 
 ---
 
@@ -335,9 +347,7 @@ Final Answer
 | Sentence Transformers | Text embeddings           |
 | Google Gemini         | Answer generation         |
 | Requests              | GitHub API communication  |
-| HTML                  | Frontend structure        |
-| CSS                   | Frontend styling          |
-| JavaScript            | Frontend logic            |
+| React + Vite          | Frontend                  |
 
 ---
 
