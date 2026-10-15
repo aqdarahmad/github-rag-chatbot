@@ -51,6 +51,7 @@ function useChat() {
       console.error(err);
 
       setError(
+        err.userMessage ||
         "Unable to connect to the backend."
       );
 

@@ -1,3 +1,13 @@
+---
+title: GitHub RAG Chatbot
+emoji: 🤖
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # GitHub RAG Chatbot
 
 A Retrieval-Augmented Generation (RAG) chatbot for answering questions about FastAPI documentation.
@@ -67,6 +77,8 @@ github-rag-chatbot/
 │       ├── package.json
 │       └── vite.config.js
 │
+├── Dockerfile
+├── .dockerignore
 ├── requirements.txt
 ├── .gitignore
 └── README.md
@@ -218,14 +230,14 @@ http://127.0.0.1:8000
 Open:
 
 ```text
-http://127.0.0.1:8000/
+http://127.0.0.1:8000/health
 ```
 
 Expected response:
 
 ```json
 {
-  "message": "GitHub RAG Chatbot is running"
+  "status": "ok"
 }
 ```
 
@@ -233,7 +245,7 @@ Expected response:
 
 ## API
 
-### `GET /`
+### `GET /health`
 
 Checks whether the backend is running.
 
@@ -292,6 +304,54 @@ By default the frontend sends requests to `http://127.0.0.1:8000`. To use anothe
 ```env
 VITE_API_URL=http://your-backend-url
 ```
+
+---
+
+## Deployment (Docker)
+
+The `Dockerfile` builds the React frontend and the Python backend into one image.
+The backend serves the frontend too, so the whole app is available on **one link**.
+
+### Run with Docker locally
+
+```bash
+docker build -t rag-chatbot .
+docker run -p 7860:7860 -e GEMINI_API_KEY=your_gemini_api_key rag-chatbot
+```
+
+Then open `http://localhost:7860`.
+
+### Deploy on Hugging Face Spaces (free)
+
+1. Create an account on https://huggingface.co and a new **Space**:
+   choose **Docker** as the SDK (blank template) and keep it public.
+2. In the Space, open **Settings → Variables and secrets** and add a **secret**
+   named `GEMINI_API_KEY` with your Gemini key.
+3. Upload the project from this folder (the upload command handles the large
+   `chroma_db` file for you):
+
+```bash
+pip install -U huggingface_hub
+hf auth login
+hf upload YOUR_USERNAME/YOUR_SPACE_NAME . . --repo-type=space --exclude ".git/*" --exclude "venv/*" --exclude ".venv/*" --exclude ".env" --exclude "frontend/frontend/node_modules/*" --exclude "frontend/frontend/dist/*" --exclude "data/*"
+```
+
+4. The Space builds the image (the first build takes several minutes) and then
+   your app is live at `https://YOUR_USERNAME-YOUR_SPACE_NAME.hf.space`.
+
+> The block at the very top of this README (between `---`) is the Hugging Face Spaces configuration. Keep it.
+
+### Environment variables
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | required | Google Gemini API key (use a secret, never commit it) |
+| `ALLOWED_ORIGINS` | empty | Extra frontend URLs allowed by CORS, separated by commas (only needed if the frontend is hosted on a different domain) |
+| `RATE_LIMIT_REQUESTS` | `10` | Questions allowed per IP in the time window |
+| `RATE_LIMIT_WINDOW_SECONDS` | `60` | Length of the rate-limit window |
+| `MAX_QUESTION_LENGTH` | `500` | Maximum characters in a question |
+
+The rate limit protects your Gemini quota on a public link.
 
 ---
 

@@ -1,5 +1,9 @@
+// In development the backend runs on port 8000.
+// In production (Docker) the backend also serves the frontend,
+// so requests go to the same origin.
 const API_URL =
-  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+  import.meta.env.VITE_API_URL ??
+  (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
 
 export async function askQuestion(question) {
 
@@ -19,9 +23,22 @@ export async function askQuestion(question) {
 
   if (!response.ok) {
 
-    throw new Error(
+    const error = new Error(
       `Request failed with status ${response.status}`
     );
+
+    if (response.status === 429) {
+      error.userMessage =
+        "Too many questions in a short time. Please wait a minute and try again.";
+    } else if (response.status === 422) {
+      error.userMessage =
+        "Your question is too long or invalid. Please shorten it and try again.";
+    } else if (response.status >= 500) {
+      error.userMessage =
+        "The server could not generate an answer. Please try again.";
+    }
+
+    throw error;
 
   }
 

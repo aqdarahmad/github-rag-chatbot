@@ -1,0 +1,18 @@
+.git
+.gitignore
+.env
+.vscode
+.idea
+
+# Python
+venv
+.venv
+__pycache__
+*.pyc
+
+# Frontend (rebuilt inside Docker)
+frontend/frontend/node_modules
+frontend/frontend/dist
+
+# Only needed to rebuild the vector database locally
+data
