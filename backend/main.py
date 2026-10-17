@@ -12,10 +12,19 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .generator import MissingAPIKeyError
 from .rag import ask
 
 
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
+
 logger = logging.getLogger("rag-chatbot")
+
+# Keep the logs readable: log every HTTP call of the Gemini client only on warnings
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 # ==========================================
@@ -198,6 +207,15 @@ def ask_question(
     try:
 
         answer = ask(request.question)
+
+    except MissingAPIKeyError:
+
+        logger.error("GEMINI_API_KEY is not configured")
+
+        raise HTTPException(
+            status_code=503,
+            detail="The server is not configured yet."
+        )
 
     except Exception:
 

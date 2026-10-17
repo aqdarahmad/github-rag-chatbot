@@ -1,11 +1,15 @@
-import chromadb
-
+import logging
 from pathlib import Path
 
+import chromadb
+from chromadb.config import Settings
 from sentence_transformers import (
     SentenceTransformer,
     CrossEncoder
 )
+
+
+logger = logging.getLogger("rag-chatbot")
 
 
 # ==========================================
@@ -16,14 +20,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 CHROMA_PATH = BASE_DIR / "chroma_db"
 
+COLLECTION_NAME = "github_code"
+
 
 # ==========================================
 # Embedding model
 # ==========================================
 
-EMBEDDING_MODEL_NAME = (
-    "all-MiniLM-L6-v2"
-)
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 
 embedding_model = SentenceTransformer(
     EMBEDDING_MODEL_NAME
@@ -48,12 +52,24 @@ reranker = CrossEncoder(
 # ==========================================
 
 client = chromadb.PersistentClient(
-    path=str(CHROMA_PATH)
+    path=str(CHROMA_PATH),
+    settings=Settings(anonymized_telemetry=False)
 )
 
-collection = client.get_collection(
-    name="github_code"
-)
+try:
+
+    collection = client.get_collection(
+        name=COLLECTION_NAME
+    )
+
+except Exception as error:
+
+    raise RuntimeError(
+        f"ChromaDB collection '{COLLECTION_NAME}' was not "
+        f"found in {CHROMA_PATH}. Build it first with: "
+        f"python -m backend.github_documents && "
+        f"python -m backend.embeddings"
+    ) from error
 
 
 # ==========================================
@@ -61,30 +77,15 @@ collection = client.get_collection(
 # Semantic retrieval
 # ==========================================
 
-def search(
-    query,
-    top_k=20
-):
+def search(query, top_k=20):
 
-    print(
-        "\nSearching ChromaDB..."
+    # Convert the question to an embedding
+    query_embedding = embedding_model.encode(
+        query,
+        normalize_embeddings=True
     )
 
-    # --------------------------------------
-    # Convert question to embedding
-    # --------------------------------------
-
-    query_embedding = (
-        embedding_model.encode(
-            query,
-            normalize_embeddings=True
-        )
-    )
-
-    # --------------------------------------
     # Semantic search
-    # --------------------------------------
-
     results = collection.query(
 
         query_embeddings=[
@@ -100,13 +101,9 @@ def search(
         ]
     )
 
-    documents = results[
-        "documents"
-    ][0]
-
-    print(
-        f"ChromaDB returned "
-        f"{len(documents)} candidates."
+    logger.info(
+        "ChromaDB returned %d candidates.",
+        len(results["documents"][0])
     )
 
     return results
@@ -117,142 +114,61 @@ def search(
 # Cross-Encoder reranking
 # ==========================================
 
-def rerank_chunks(
-    results,
-    query,
-    max_chunks=5
-):
+def rerank_chunks(results, query, max_chunks=5):
 
-    documents = results[
-        "documents"
-    ][0]
+    documents = results["documents"][0]
 
-    metadatas = results[
-        "metadatas"
-    ][0]
+    metadatas = results["metadatas"][0]
 
-    distances = results[
-        "distances"
-    ][0]
+    distances = results["distances"][0]
 
     if not documents:
 
         return []
 
-    # ======================================
-    # Create query-document pairs
-    # ======================================
-
+    # Score every (query, document) pair
     pairs = [
-
-        [
-            query,
-            document
-        ]
-
+        [query, document]
         for document in documents
     ]
 
-    # ======================================
-    # Reranker scores
-    # ======================================
+    scores = reranker.predict(pairs)
 
-    scores = reranker.predict(
-        pairs
-    )
-
-    # ======================================
     # Build candidates
-    # ======================================
+    chunks = [
 
-    chunks = []
-
-    for document, metadata, distance, score in zip(
-        documents,
-        metadatas,
-        distances,
-        scores
-    ):
-
-        chunks.append({
-
+        {
             "document": document,
-
             "metadata": metadata,
+            "distance": float(distance),
+            "rerank_score": float(score)
+        }
 
-            "distance": float(
-                distance
-            ),
+        for document, metadata, distance, score in zip(
+            documents,
+            metadatas,
+            distances,
+            scores
+        )
+    ]
 
-            "rerank_score": float(
-                score
-            )
-
-        })
-
-    # ======================================
     # Highest reranker score = best
-    # ======================================
-
     chunks.sort(
-        key=lambda x: x["rerank_score"],
+        key=lambda chunk: chunk["rerank_score"],
         reverse=True
     )
 
-    selected = chunks[
-        :max_chunks
-    ]
+    selected = chunks[:max_chunks]
 
-    # ======================================
-    # Debug output
-    # ======================================
+    for i, chunk in enumerate(selected):
 
-    print(
-        "\n=============================="
-    )
-
-    print(
-        "Reranked Results"
-    )
-
-    print(
-        "=============================="
-    )
-
-    for i, chunk in enumerate(
-        selected
-    ):
-
-        print(
-            f"\nResult {i + 1}"
-        )
-
-        print(
-            f"Source: "
-            f"{chunk['metadata']['source']}"
-        )
-
-        print(
-            f"Chunk ID: "
-            f"{chunk['metadata']['chunk_id']}"
-        )
-
-        print(
-            f"Chroma distance: "
-            f"{chunk['distance']:.4f}"
-        )
-
-        print(
-            f"Reranker score: "
-            f"{chunk['rerank_score']:.4f}"
-        )
-
-        print(
-            "\nContent:"
-        )
-
-        print(
-            chunk["document"][:700]
+        logger.debug(
+            "Result %d | %s | chunk %s | distance %.4f | rerank %.4f",
+            i + 1,
+            chunk["metadata"]["source"],
+            chunk["metadata"]["chunk_id"],
+            chunk["distance"],
+            chunk["rerank_score"]
         )
 
     return selected
@@ -262,24 +178,18 @@ def rerank_chunks(
 # Full retrieval pipeline
 # ==========================================
 
-def retrieve(
-    query,
-    retrieval_k=20,
-    final_k=5
-):
+def retrieve(query, retrieval_k=20, final_k=5):
 
     results = search(
         query,
         top_k=retrieval_k
     )
 
-    selected_chunks = rerank_chunks(
+    return rerank_chunks(
         results,
         query,
         max_chunks=final_k
     )
-
-    return selected_chunks
 
 
 # ==========================================
@@ -298,30 +208,24 @@ if __name__ == "__main__":
         final_k=5
     )
 
-    print(
-        "\n=============================="
-    )
+    print("\n==============================")
+    print("Final Selected Chunks")
+    print("==============================")
 
-    print(
-        "Final Selected Chunks"
-    )
+    for i, chunk in enumerate(chunks):
 
-    print(
-        "=============================="
-    )
-
-    for i, chunk in enumerate(
-        chunks
-    ):
+        print(f"\nResult {i + 1}")
 
         print(
-            f"\nResult {i + 1}"
+            f"Source: {chunk['metadata']['source']}"
         )
 
         print(
-            chunk["document"]
+            f"Reranker score: {chunk['rerank_score']:.4f}"
         )
 
-        print(
-            "\n" + "=" * 60
-        )
+        print()
+
+        print(chunk["document"])
+
+        print("\n" + "=" * 60)

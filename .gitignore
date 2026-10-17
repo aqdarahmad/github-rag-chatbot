@@ -13,8 +13,12 @@ __pycache__/
 .vscode/
 .idea/
 
-# RAG / generated data
+# Tests
+.pytest_cache/
 
+# Frontend build output
+frontend/frontend/node_modules/
+frontend/frontend/dist/
 
 # Logs
 *.log

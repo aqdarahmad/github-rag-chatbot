@@ -1,40 +1,52 @@
 import os
+from functools import lru_cache
+from pathlib import Path
 
 from dotenv import load_dotenv
 from google import genai
 
 
 # ==========================================
-# Load environment variables
+# Environment variables
 # ==========================================
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-
-if not GEMINI_API_KEY:
-    raise Exception(
-        "GEMINI_API_KEY was not found. "
-        "Check your .env file."
-    )
-
-
-# ==========================================
-# Gemini client
-# ==========================================
-
-client = genai.Client(
-    api_key=GEMINI_API_KEY
-)
+# Local development: read the .env file from the project root.
+# In deployment the variables come from the host (secrets / env vars).
+load_dotenv(BASE_DIR / ".env")
 
 
 # ==========================================
 # Model
 # ==========================================
 
-#MODEL_NAME = "gemini-3.6-flash"
-MODEL_NAME = "gemini-3.1-flash-lite"
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+
+
+class MissingAPIKeyError(RuntimeError):
+    """Raised when GEMINI_API_KEY is not configured."""
+
+
+# ==========================================
+# Gemini client (created on first use, so the
+# app can still start and answer /health even
+# if the key is missing)
+# ==========================================
+
+@lru_cache(maxsize=1)
+def get_client():
+
+    api_key = os.getenv("GEMINI_API_KEY")
+
+    if not api_key:
+        raise MissingAPIKeyError(
+            "GEMINI_API_KEY was not found. "
+            "Add it to your .env file (local) or to the "
+            "secrets / environment variables of your host."
+        )
+
+    return genai.Client(api_key=api_key)
 
 
 # ==========================================
@@ -62,12 +74,15 @@ Question:
 Answer:
 """
 
-    response = client.models.generate_content(
+    response = get_client().models.generate_content(
         model=MODEL_NAME,
         contents=prompt
     )
 
-    return response.text
+    # response.text can be empty when the answer is blocked
+    return response.text or (
+        "I could not generate an answer for this question."
+    )
 
 
 # ==========================================

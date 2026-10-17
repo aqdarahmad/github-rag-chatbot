@@ -1,5 +1,10 @@
+import logging
+
 from .retriever import retrieve
 from .generator import generate_answer
+
+
+logger = logging.getLogger("rag-chatbot")
 
 
 # ==========================================
@@ -10,12 +15,9 @@ def build_context(selected_chunks):
 
     context_parts = []
 
-    for i, chunk in enumerate(
-        selected_chunks
-    ):
+    for i, chunk in enumerate(selected_chunks):
 
         context_parts.append(
-
             f"""
 --- Context {i + 1} ---
 
@@ -29,9 +31,7 @@ Chunk ID:
 """
         )
 
-    return "\n".join(
-        context_parts
-    )
+    return "\n".join(context_parts)
 
 
 # ==========================================
@@ -40,23 +40,14 @@ Chunk ID:
 
 def ask(question):
 
-    # ======================================
-    # Retrieve + Rerank
-    # ======================================
-
+    # Retrieve + rerank
     selected_chunks = retrieve(
-
         query=question,
-
         retrieval_k=20,
-
         final_k=5
     )
 
-    # ======================================
     # No results
-    # ======================================
-
     if not selected_chunks:
 
         return (
@@ -65,39 +56,13 @@ def ask(question):
             "documentation."
         )
 
-    # ======================================
     # Build context
-    # ======================================
+    context = build_context(selected_chunks)
 
-    context = build_context(
-        selected_chunks
-    )
-
-    print(
-        "\n=============================="
-    )
-
-    print(
-        "Sending context to Gemini..."
-    )
-
-    print(
-        "=============================="
-    )
-
-    print(
+    logger.debug(
+        "Sending context to Gemini:\n%s",
         context[:3000]
     )
 
-    # ======================================
     # Generate answer
-    # ======================================
-
-    answer = generate_answer(
-
-        question,
-
-        context
-    )
-
-    return answer
+    return generate_answer(question, context)

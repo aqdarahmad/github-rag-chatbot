@@ -16,3 +16,11 @@ frontend/frontend/dist
 
 # Only needed to rebuild the vector database locally
 data
+
+# Development only
+scripts
+tests
+pytest.ini
+requirements-dev.txt
+.env.example
+.pytest_cache

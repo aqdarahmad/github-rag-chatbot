@@ -264,11 +264,9 @@ def load_documents():
 
                     "text": chunk,
 
-                    "source": str(
-                        file_path.relative_to(
-                            BASE_DIR
-                        )
-                    ),
+                    "source": file_path.relative_to(
+                        BASE_DIR
+                    ).as_posix(),
 
                     "chunk_id": index,
 

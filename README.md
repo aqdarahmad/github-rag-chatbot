@@ -60,27 +60,30 @@ Generated Answer
 github-rag-chatbot/
 │
 ├── backend/
-│   ├── chunker.py
-│   ├── embeddings.py
-│   ├── generator.py
-│   ├── github_documents.py
-│   ├── github_loader.py
-│   ├── main.py
-│   ├── rag.py
-│   ├── retriever.py
-│   ├── test_models.py
-│   └── test_similarity.py
+│   ├── main.py                # FastAPI app (API, CORS, rate limit, serves the frontend)
+│   ├── rag.py                 # question -> retrieve -> Gemini -> answer
+│   ├── retriever.py           # ChromaDB search + cross-encoder reranking
+│   ├── generator.py           # Gemini client
+│   ├── github_documents.py    # downloads the FastAPI docs into data/
+│   ├── chunker.py             # splits the documents into chunks
+│   └── embeddings.py          # creates embeddings and fills ChromaDB
 │
 ├── frontend/
-│   └── frontend/        # React + Vite app
+│   └── frontend/              # React + Vite app
 │       ├── src/
 │       ├── package.json
 │       └── vite.config.js
 │
+├── chroma_db/                 # the prebuilt vector database
+├── data/                      # downloaded documentation (source of the database)
+├── scripts/                   # small debugging helpers
+├── tests/                     # API tests (pytest)
+│
 ├── Dockerfile
 ├── .dockerignore
+├── .env.example
 ├── requirements.txt
-├── .gitignore
+├── requirements-dev.txt
 └── README.md
 ```
 
@@ -152,7 +155,7 @@ pip install -r requirements.txt
 
 ## Environment Variables
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` in the project root and fill in your keys:
 
 ```env
 GITHUB_TOKEN=your_github_token
@@ -167,24 +170,16 @@ The `.gitignore` file already excludes `.env`.
 
 ## Build the RAG Database
 
-The project uses a document processing pipeline to prepare the documentation for retrieval.
+The repository already contains a prebuilt `chroma_db/`, so you only need this section if you want to rebuild it.
 
-Run:
-
-```bash
-python backend/github_loader.py
-```
-
-Then:
+Run these from the project root (use `-m`, because the files import each other):
 
 ```bash
-python backend/chunker.py
-```
+# 1. Download the selected FastAPI docs into data/ (needs GITHUB_TOKEN)
+python -m backend.github_documents
 
-Then:
-
-```bash
-python backend/embeddings.py
+# 2. Chunk the documents and store the embeddings in chroma_db/
+python -m backend.embeddings
 ```
 
 The process:
@@ -247,10 +242,33 @@ Expected response:
 
 ### `GET /health`
 
-Checks whether the backend is running.
+Checks whether the backend is running. Returns `{"status": "ok"}`.
 
-Example response:
+### `POST /ask`
 
+Asks a question about the FastAPI documentation.
+
+Request body:
+
+```json
+{ "question": "What is a path parameter?" }
+```
+
+Response:
+
+```json
+{ "question": "What is a path parameter?", "answer": "..." }
+```
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Answer generated |
+| `422` | Question is empty or longer than `MAX_QUESTION_LENGTH` |
+| `429` | Rate limit reached (per IP) |
+| `502` | The answer could not be generated (retrieval or Gemini error, see the logs) |
+| `503` | `GEMINI_API_KEY` is not configured on the server |
+
+### Screenshots
 
 <img width="1899" height="907" alt="image" src="https://github.com/user-attachments/assets/50cae444-a5d1-446a-a6d6-d700ca98f7d8" />
 
@@ -350,8 +368,31 @@ hf upload YOUR_USERNAME/YOUR_SPACE_NAME . . --repo-type=space --exclude ".git/*"
 | `RATE_LIMIT_REQUESTS` | `10` | Questions allowed per IP in the time window |
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | Length of the rate-limit window |
 | `MAX_QUESTION_LENGTH` | `500` | Maximum characters in a question |
+| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Gemini model used to generate answers |
+| `LOG_LEVEL` | `INFO` | Use `DEBUG` to also log the retrieved chunks and the context sent to Gemini |
+| `PORT` | `7860` | Port the server listens on (most hosts set this automatically) |
 
 The rate limit protects your Gemini quota on a public link.
+
+### Deploy on other hosts (Render, Railway, Fly.io, ...)
+
+Any host that can build a `Dockerfile` works:
+
+1. Create a new **Web Service** from this GitHub repository and choose the **Dockerfile** runtime.
+2. Add `GEMINI_API_KEY` as a secret / environment variable.
+3. Use `/health` as the health check path. The first start can take a minute while the models load,
+   and because PyTorch and the models run inside the container, choose a plan with 2 GB of RAM or more.
+
+The host sets `PORT` automatically and the app already listens on it.
+
+### Run the tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+The tests use fakes for Gemini and ChromaDB, so they need no API key.
 
 ---
 

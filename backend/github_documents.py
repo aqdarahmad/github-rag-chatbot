@@ -1,10 +1,14 @@
 import os
+from pathlib import Path
+
 import requests
 from dotenv import load_dotenv
 
 
-# Load environment variables from .env
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env (project root)
+load_dotenv(BASE_DIR / ".env")
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
@@ -249,7 +253,7 @@ if __name__ == "__main__":
     # Create data directory
     # ======================================
 
-    data_directory = "../data"
+    data_directory = str(BASE_DIR / "data")
 
     os.makedirs(
         data_directory,

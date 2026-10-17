@@ -24,7 +24,8 @@ WORKDIR /home/user/app
 
 ENV PYTHONUNBUFFERED=1 \
     HF_HOME=/home/user/.cache/huggingface \
-    TOKENIZERS_PARALLELISM=false
+    TOKENIZERS_PARALLELISM=false \
+    ANONYMIZED_TELEMETRY=False
 
 # Install the CPU-only version of torch first (much smaller than the
 # default one), then everything else from requirements.txt
@@ -44,6 +45,10 @@ COPY --chown=user chroma_db ./chroma_db
 COPY --chown=user --from=frontend-build /build/dist ./frontend/frontend/dist
 
 EXPOSE 7860
+
+# Loading the models takes a while, so give the app time to start
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '7860') + '/health', timeout=4)"
 
 # GEMINI_API_KEY must be provided as an environment variable / secret
 CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
