@@ -14,8 +14,8 @@ __pycache__
 frontend/frontend/node_modules
 frontend/frontend/dist
 
-# Only needed to rebuild the vector database locally
-data
+# The vector database is rebuilt inside Docker from data/
+chroma_db
 
 # Development only
 scripts

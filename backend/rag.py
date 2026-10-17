@@ -40,11 +40,10 @@ Chunk ID:
 
 def ask(question):
 
-    # Retrieve + rerank
+    # Retrieve the closest chunks from ChromaDB
     selected_chunks = retrieve(
         query=question,
-        retrieval_k=20,
-        final_k=5
+        top_k=8
     )
 
     # No results

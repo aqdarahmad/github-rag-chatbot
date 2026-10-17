@@ -20,7 +20,7 @@ The system retrieves relevant documentation from a vector database and uses Goog
 
 * FastAPI backend
 * Google Gemini for answer generation
-* Sentence Transformers for embeddings
+* Lightweight embeddings (all-MiniLM-L6-v2 on ONNX Runtime, no PyTorch), so it runs on free hosting
 * ChromaDB vector database
 * Semantic similarity search
 * Markdown-aware document chunking
@@ -62,7 +62,8 @@ github-rag-chatbot/
 ├── backend/
 │   ├── main.py                # FastAPI app (API, CORS, rate limit, serves the frontend)
 │   ├── rag.py                 # question -> retrieve -> Gemini -> answer
-│   ├── retriever.py           # ChromaDB search + cross-encoder reranking
+│   ├── retriever.py           # ChromaDB similarity search
+│   ├── embedder.py            # text embeddings (ONNX, used for the database and the questions)
 │   ├── generator.py           # Gemini client
 │   ├── github_documents.py    # downloads the FastAPI docs into data/
 │   ├── chunker.py             # splits the documents into chunks
@@ -74,7 +75,7 @@ github-rag-chatbot/
 │       ├── package.json
 │       └── vite.config.js
 │
-├── chroma_db/                 # the prebuilt vector database
+├── chroma_db/                 # vector database for local runs (Docker rebuilds its own from data/)
 ├── data/                      # downloaded documentation (source of the database)
 ├── scripts/                   # small debugging helpers
 ├── tests/                     # API tests (pytest)
@@ -82,6 +83,7 @@ github-rag-chatbot/
 ├── Dockerfile
 ├── .dockerignore
 ├── .env.example
+├── render.yaml                # one-click deployment on Render (free plan)
 ├── requirements.txt
 ├── requirements-dev.txt
 └── README.md
@@ -95,7 +97,7 @@ When a user asks a question, the system follows these steps:
 
 1. The user sends a question through the frontend.
 2. The FastAPI backend receives the question.
-3. The question is converted into an embedding using Sentence Transformers.
+3. The question is converted into an embedding (all-MiniLM-L6-v2 running on ONNX Runtime).
 4. ChromaDB searches for semantically similar documentation chunks.
 5. The most relevant chunks are selected.
 6. The retrieved chunks are combined into a context.
@@ -170,17 +172,23 @@ The `.gitignore` file already excludes `.env`.
 
 ## Build the RAG Database
 
-The repository already contains a prebuilt `chroma_db/`, so you only need this section if you want to rebuild it.
+The repository already contains the downloaded documentation (`data/`), so for a first run you only need step 2.
+(Docker builds its own database during `docker build`, so deployment does not need this.)
 
 Run these from the project root (use `-m`, because the files import each other):
 
 ```bash
-# 1. Download the selected FastAPI docs into data/ (needs GITHUB_TOKEN)
+# 1. (optional) Download the selected FastAPI docs into data/ (needs GITHUB_TOKEN)
 python -m backend.github_documents
 
 # 2. Chunk the documents and store the embeddings in chroma_db/
 python -m backend.embeddings
 ```
+
+The first run downloads the small ONNX embedding model (about 80 MB).
+
+If you keep an older `chroma_db/` that was built with sentence-transformers, you can check that it still matches the
+embeddings used now with `python scripts/verify_embeddings.py` (if it says `MISMATCH`, rebuild with step 2).
 
 The process:
 
@@ -329,6 +337,8 @@ VITE_API_URL=http://your-backend-url
 
 The `Dockerfile` builds the React frontend and the Python backend into one image.
 The backend serves the frontend too, so the whole app is available on **one link**.
+The image does not use PyTorch (embeddings run on ONNX) and it builds the vector database from `data/` while building,
+so it is small enough for free hosting plans.
 
 ### Run with Docker locally
 
@@ -339,7 +349,21 @@ docker run -p 7860:7860 -e GEMINI_API_KEY=your_gemini_api_key rag-chatbot
 
 Then open `http://localhost:7860`.
 
-### Deploy on Hugging Face Spaces (free)
+### Deploy on Render (free)
+
+1. Push this repository to GitHub and create an account on https://render.com (sign in with GitHub).
+2. Click **New +** → **Blueprint**, choose this repository, and confirm. Render reads `render.yaml`
+   (Docker runtime, **free** plan, health check on `/health`).
+3. When Render asks for `GEMINI_API_KEY`, paste your Gemini key.
+4. Wait for the build (about 5-10 minutes the first time). Your app is live at
+   `https://github-rag-chatbot-XXXX.onrender.com`.
+
+Things to know about the free plan: the service sleeps after about 15 minutes without visitors (the first request
+afterwards takes around a minute) and it has 512 MB of RAM, which this lightweight version is built to fit.
+
+### Deploy on Hugging Face Spaces (requires PRO)
+
+> Docker Spaces now require a paid Hugging Face plan (PRO), even on the CPU Basic hardware. Use Render above for a free option.
 
 1. Create an account on https://huggingface.co and a new **Space**:
    choose **Docker** as the SDK (blank template) and keep it public.
@@ -351,7 +375,7 @@ Then open `http://localhost:7860`.
 ```bash
 pip install -U huggingface_hub
 hf auth login
-hf upload YOUR_USERNAME/YOUR_SPACE_NAME . . --repo-type=space --exclude ".git/*" --exclude "venv/*" --exclude ".venv/*" --exclude ".env" --exclude "frontend/frontend/node_modules/*" --exclude "frontend/frontend/dist/*" --exclude "data/*"
+hf upload YOUR_USERNAME/YOUR_SPACE_NAME . . --repo-type=space --exclude ".git/*" --exclude "venv/*" --exclude ".venv/*" --exclude ".env" --exclude "frontend/frontend/node_modules/*" --exclude "frontend/frontend/dist/*"
 ```
 
 4. The Space builds the image (the first build takes several minutes) and then
@@ -374,14 +398,14 @@ hf upload YOUR_USERNAME/YOUR_SPACE_NAME . . --repo-type=space --exclude ".git/*"
 
 The rate limit protects your Gemini quota on a public link.
 
-### Deploy on other hosts (Render, Railway, Fly.io, ...)
+### Deploy on other hosts (Google Cloud Run, Railway, Fly.io, ...)
 
 Any host that can build a `Dockerfile` works:
 
-1. Create a new **Web Service** from this GitHub repository and choose the **Dockerfile** runtime.
+1. Create a new web service from this GitHub repository using the **Dockerfile**.
 2. Add `GEMINI_API_KEY` as a secret / environment variable.
-3. Use `/health` as the health check path. The first start can take a minute while the models load,
-   and because PyTorch and the models run inside the container, choose a plan with 2 GB of RAM or more.
+3. Use `/health` as the health check path and give the service at least 512 MB of RAM
+   (1 GB is more comfortable).
 
 The host sets `PORT` automatically and the app already listens on it.
 
@@ -421,7 +445,7 @@ The complete Retrieval-Augmented Generation pipeline is:
 ```text
 User Question
       ↓
-Sentence Transformer
+Embedding model (MiniLM on ONNX)
       ↓
 Question Embedding
       ↓
@@ -445,7 +469,7 @@ Final Answer
 | Python                | Main programming language |
 | FastAPI               | Backend REST API          |
 | ChromaDB              | Vector database           |
-| Sentence Transformers | Text embeddings           |
+| ONNX Runtime (MiniLM) | Text embeddings           |
 | Google Gemini         | Answer generation         |
 | Requests              | GitHub API communication  |
 | React + Vite          | Frontend                  |
@@ -460,7 +484,8 @@ Final Answer
 * Repository-specific chat sessions
 * Authentication
 * Streaming responses
-* Improved retrieval and reranking
+* Reranking with a cross-encoder (needs a host with more RAM, was removed to fit free hosting)
+* Index more of the FastAPI documentation
 * Better chunk selection
 * Multi-repository support
 

@@ -1,10 +1,19 @@
-import chromadb
+"""Build the vector database.
+
+Run from the project root:
+    python -m backend.embeddings
+
+Reads the documents in data/, splits them into chunks, creates the embeddings
+and stores everything in chroma_db/ (the old collection is replaced).
+"""
 
 from pathlib import Path
 
-from sentence_transformers import SentenceTransformer
+import chromadb
+from chromadb.config import Settings
 
 from .chunker import load_documents
+from .embedder import embed
 
 
 # ==========================================
@@ -15,53 +24,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 CHROMA_PATH = BASE_DIR / "chroma_db"
 
+COLLECTION_NAME = "github_code"
 
-# ==========================================
-# Embedding model
-# ==========================================
-
-MODEL_NAME = "all-MiniLM-L6-v2"
-
-model = SentenceTransformer(
-    MODEL_NAME
-)
-
-
-# ==========================================
-# ChromaDB
-# ==========================================
-
-client = chromadb.PersistentClient(
-    path=str(CHROMA_PATH)
-)
-
-
-collection = client.get_or_create_collection(
-    name="github_code",
-    metadata={
-        "hnsw:space": "cosine"
-    }
-)
-
-
-# ==========================================
-# Create embeddings
-# ==========================================
-
-def create_embeddings(documents):
-
-    texts = [
-        document["text"]
-        for document in documents
-    ]
-
-    embeddings = model.encode(
-        texts,
-        show_progress_bar=True,
-        normalize_embeddings=True
-    )
-
-    return embeddings
+BATCH_SIZE = 64
 
 
 # ==========================================
@@ -70,76 +35,77 @@ def create_embeddings(documents):
 
 def build_database():
 
-    print(
-        "\nLoading documents..."
-    )
+    print("\nLoading documents...")
 
     documents = load_documents()
 
-    print(
-        f"Loaded {len(documents)} chunks."
-    )
+    print(f"Loaded {len(documents)} chunks.")
 
     if not documents:
 
         raise RuntimeError(
-            "No documents were found."
+            "No documents were found in data/. "
+            "Run: python -m backend.github_documents"
         )
 
-    print(
-        "\nCreating embeddings..."
+    client = chromadb.PersistentClient(
+        path=str(CHROMA_PATH),
+        settings=Settings(anonymized_telemetry=False)
     )
 
-    embeddings = create_embeddings(
-        documents
-    )
+    # Start from an empty collection so no old chunks stay behind
+    try:
 
-    print(
-        f"Embedding shape: "
-        f"{embeddings.shape}"
-    )
+        client.delete_collection(name=COLLECTION_NAME)
 
-    ids = [
-        f"chunk_{i}"
-        for i in range(
-            len(documents)
-        )
-    ]
+    except Exception:
 
-    texts = [
-        document["text"]
-        for document in documents
-    ]
+        pass
 
-    metadatas = [
-
-        {
-            "source": document["source"],
-            "chunk_id": document["chunk_id"]
+    collection = client.create_collection(
+        name=COLLECTION_NAME,
+        metadata={
+            "hnsw:space": "cosine"
         }
-
-        for document in documents
-    ]
-
-    print(
-        "\nStoring documents in ChromaDB..."
     )
 
-    collection.upsert(
+    print("\nCreating embeddings and storing them in ChromaDB...")
 
-        ids=ids,
+    for start in range(0, len(documents), BATCH_SIZE):
 
-        documents=texts,
+        batch = documents[start:start + BATCH_SIZE]
 
-        embeddings=embeddings.tolist(),
+        texts = [
+            document["text"]
+            for document in batch
+        ]
 
-        metadatas=metadatas
-    )
+        collection.add(
 
-    print(
-        f"\nStored "
-        f"{len(documents)} chunks."
-    )
+            ids=[
+                f"chunk_{start + i}"
+                for i in range(len(batch))
+            ],
+
+            documents=texts,
+
+            embeddings=embed(texts),
+
+            metadatas=[
+                {
+                    "source": document["source"],
+                    "chunk_id": document["chunk_id"]
+                }
+                for document in batch
+            ]
+        )
+
+        print(
+            f"  {min(start + BATCH_SIZE, len(documents))}"
+            f" / {len(documents)}"
+        )
+
+    print(f"\nStored {len(documents)} chunks.")
 
 
 # ==========================================

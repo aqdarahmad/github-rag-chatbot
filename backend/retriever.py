@@ -3,10 +3,8 @@ from pathlib import Path
 
 import chromadb
 from chromadb.config import Settings
-from sentence_transformers import (
-    SentenceTransformer,
-    CrossEncoder
-)
+
+from .embedder import embed
 
 
 logger = logging.getLogger("rag-chatbot")
@@ -21,30 +19,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 CHROMA_PATH = BASE_DIR / "chroma_db"
 
 COLLECTION_NAME = "github_code"
-
-
-# ==========================================
-# Embedding model
-# ==========================================
-
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-
-embedding_model = SentenceTransformer(
-    EMBEDDING_MODEL_NAME
-)
-
-
-# ==========================================
-# Reranker
-# ==========================================
-
-RERANKER_MODEL_NAME = (
-    "cross-encoder/ms-marco-MiniLM-L-6-v2"
-)
-
-reranker = CrossEncoder(
-    RERANKER_MODEL_NAME
-)
 
 
 # ==========================================
@@ -67,30 +41,32 @@ except Exception as error:
     raise RuntimeError(
         f"ChromaDB collection '{COLLECTION_NAME}' was not "
         f"found in {CHROMA_PATH}. Build it first with: "
-        f"python -m backend.github_documents && "
         f"python -m backend.embeddings"
     ) from error
 
 
+# Load the embedding model now (not on the first question),
+# so a problem shows up at startup and the first answer is fast.
+embed(["warm up"])
+
+logger.info(
+    "Retriever ready: %d chunks in ChromaDB.",
+    collection.count()
+)
+
+
 # ==========================================
-# Stage 1
 # Semantic retrieval
 # ==========================================
 
-def search(query, top_k=20):
+def retrieve(query, top_k=8):
+    """Return the top_k chunks closest to the question (best first)."""
 
-    # Convert the question to an embedding
-    query_embedding = embedding_model.encode(
-        query,
-        normalize_embeddings=True
-    )
+    query_embedding = embed([query])[0]
 
-    # Semantic search
     results = collection.query(
 
-        query_embeddings=[
-            query_embedding.tolist()
-        ],
+        query_embeddings=[query_embedding],
 
         n_results=top_k,
 
@@ -101,95 +77,32 @@ def search(query, top_k=20):
         ]
     )
 
-    logger.info(
-        "ChromaDB returned %d candidates.",
-        len(results["documents"][0])
-    )
-
-    return results
-
-
-# ==========================================
-# Stage 2
-# Cross-Encoder reranking
-# ==========================================
-
-def rerank_chunks(results, query, max_chunks=5):
-
-    documents = results["documents"][0]
-
-    metadatas = results["metadatas"][0]
-
-    distances = results["distances"][0]
-
-    if not documents:
-
-        return []
-
-    # Score every (query, document) pair
-    pairs = [
-        [query, document]
-        for document in documents
-    ]
-
-    scores = reranker.predict(pairs)
-
-    # Build candidates
     chunks = [
 
         {
             "document": document,
             "metadata": metadata,
-            "distance": float(distance),
-            "rerank_score": float(score)
+            "distance": float(distance)
         }
 
-        for document, metadata, distance, score in zip(
-            documents,
-            metadatas,
-            distances,
-            scores
+        for document, metadata, distance in zip(
+            results["documents"][0],
+            results["metadatas"][0],
+            results["distances"][0]
         )
     ]
 
-    # Highest reranker score = best
-    chunks.sort(
-        key=lambda chunk: chunk["rerank_score"],
-        reverse=True
-    )
-
-    selected = chunks[:max_chunks]
-
-    for i, chunk in enumerate(selected):
+    for i, chunk in enumerate(chunks):
 
         logger.debug(
-            "Result %d | %s | chunk %s | distance %.4f | rerank %.4f",
+            "Result %d | %s | chunk %s | distance %.4f",
             i + 1,
             chunk["metadata"]["source"],
             chunk["metadata"]["chunk_id"],
-            chunk["distance"],
-            chunk["rerank_score"]
+            chunk["distance"]
         )
 
-    return selected
-
-
-# ==========================================
-# Full retrieval pipeline
-# ==========================================
-
-def retrieve(query, retrieval_k=20, final_k=5):
-
-    results = search(
-        query,
-        top_k=retrieval_k
-    )
-
-    return rerank_chunks(
-        results,
-        query,
-        max_chunks=final_k
-    )
+    return chunks
 
 
 # ==========================================
@@ -202,17 +115,7 @@ if __name__ == "__main__":
         "\nAsk a question about FastAPI: "
     )
 
-    chunks = retrieve(
-        question,
-        retrieval_k=20,
-        final_k=5
-    )
-
-    print("\n==============================")
-    print("Final Selected Chunks")
-    print("==============================")
-
-    for i, chunk in enumerate(chunks):
+    for i, chunk in enumerate(retrieve(question)):
 
         print(f"\nResult {i + 1}")
 
@@ -221,7 +124,7 @@ if __name__ == "__main__":
         )
 
         print(
-            f"Reranker score: {chunk['rerank_score']:.4f}"
+            f"Distance: {chunk['distance']:.4f}"
         )
 
         print()

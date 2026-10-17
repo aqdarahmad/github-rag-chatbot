@@ -1,0 +1,11 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: github-rag-chatbot
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # Asked for in the Render dashboard (never stored in the repo)
+      - key: GEMINI_API_KEY
+        sync: false
